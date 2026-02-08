@@ -11,3 +11,10 @@ target_include_directories(dsp_lab
     PUBLIC 
     include
 ) 
+
+find_package(SndFile REQUIRED)
+find_package(SDL2 REQUIRED CONFIG REQUIRED COMPONENTS SDL2)
+# find_package(Gnuplot REQUIRED)
+
+target_link_libraries(dsp_lab PRIVATE SndFile::sndfile)
+target_link_libraries(dsp_lab PRIVATE SDL2::SDL2)
