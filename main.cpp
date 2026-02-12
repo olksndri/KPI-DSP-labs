@@ -127,9 +127,14 @@ void analyze_audio(float *sound_data, s_signal *signal_str)
 	calc_phase_shifts(signal_str->dft_res, signal_str->phase_shifts, signal_str->N); 
 	calc_power_spectrum(signal_str->dft_res, signal_str->power_spectrum, signal_str->N); 
 
-	float Fnyquist = (float)signal_str->Fs / 2; 			// Nyquist frequency 
-	float delta_F = (float)signal_str->Fs / signal_str->N; 	// Frequency resolution - step between spectral bins  
-	float T = (float)signal_str->N / signal_str->Fs; 		// Time window (time duration of analyzed signal)
+	float Fnyquist = (float)signal_str->Fs / 2; 			// Nyquist frequency [Hz] 
+	float delta_F = (float)signal_str->Fs / signal_str->N; 	// Frequency resolution - step between spectral bins, [Hz] 
+	float T = (float)signal_str->N / signal_str->Fs; 		// Time window (time duration of analyzed signal interval), [s] 
+	float T_ms = T * 1000 ; // Time window in [ms]
+
+	printf("Nyquist frequency: %.2f [Hz]\n", Fnyquist); 
+	printf("Frequency resolution: %.2f [Hz]\n", delta_F); 
+	printf("Analysis time window: %.2f [ms]\n", T_ms); 
 
 	// Calculate frequency of each bin 
 	calc_bin_frequencies(signal_str->frequencies, signal_str->Fs, signal_str->N); 
@@ -137,7 +142,7 @@ void analyze_audio(float *sound_data, s_signal *signal_str)
 	// Calculate amplitude of each bin 
 	calc_bin_amplitudes(signal_str->magnitudes, signal_str->amplitudes, signal_str->N); 
 	
-	int display_points = 256; 
+	int display_points = 128; 
 	display_peaks(signal_str->frequencies, signal_str->amplitudes, display_points); 
 }
 
@@ -183,13 +188,24 @@ int main(int argc, char **argv)
 	for(int i = 0; i < sf_info.frames/2; i++)
 		sound_data_ch0_fl[i] = (float)sound_data_ch0[i] / INT16_MAX; 
 
-	int N = 4096; 
-	int sample_rate = sf_info.samplerate; 
-	// s_signal_init(&signal_str, N, sample_rate, HANN_WINDOW); 
-	s_signal_init(&signal_str, N, sample_rate, NO_WINDOW); 
 
+	int sample_rate = sf_info.samplerate; 
+	int N = 0; 
+	int win_flag = 0; 
+
+	std::cout << "Enter number of DFT points: \t"; 
+	std::cin >> N; 
+	std::cout << "\n"; 
+	std::cout << "Should we use hann window? Print 1 or 0: \t"; 
+	std::cin >> win_flag; 
+	std::cout << "\n"; 
+
+	printf("Number of DFT points: %d\n", N);  
+	printf("Used window: %s\n", (win_flag) ? "HANN_WINDOW" :"NO_WINDOW"); 
+
+	// s_signal_init(&signal_str, N, sample_rate, HANN_WINDOW); 
+	s_signal_init(&signal_str, N, sample_rate, (win_flag) ? HANN_WINDOW : NO_WINDOW); 
 	analyze_audio(sound_data_ch0_fl, &signal_str); 
-	
 	s_signal_deinit(&signal_str); 
 
 	free_nc(sound_data); 
