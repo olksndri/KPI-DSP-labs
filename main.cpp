@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <sndfile.h>
+#include <time.h>
 
 
 #include "math/complex_math.h"
@@ -13,7 +14,15 @@
 
 #include "utils/memops.h"
 
+#include "utils/fileops.h"
+
+#include "utils/timeops.h"
+
 namespace plt = matplotlibcpp;
+
+
+int use_logs = 0; 
+int use_time_profile = 0;
 
 
 typedef struct s_signal
@@ -24,7 +33,8 @@ typedef struct s_signal
 
 	WINDOW_T window; 	// Type of window to apply 
 	
-	float *input_signal;	// Pointer to input signal buffer 
+	// float *input_signal;	// Pointer to input signal buffer 
+	complex *input_signal;	// Pointer to input signal buffer 
 	
 	complex *dft_res;		// Pointer to DFT result 
 	
@@ -50,11 +60,11 @@ void s_signal_init(s_signal *s, int N, int sample_rate, WINDOW_T win)
 
 	s->window = win; 
 	
-	s->input_signal = (float*)malloc_nc(N * sizeof(float)); 
+	s->input_signal = (complex*)malloc_nc(N * sizeof(complex)); 
 	
-	s->dft_res = (complex*)malloc_nc(N * sizeof(float)); 
+	s->dft_res = (complex*)malloc_nc(N * sizeof(complex)); 
 	
-	s->idft_res = (complex*)malloc_nc(N * sizeof(float)); 
+	s->idft_res = (complex*)malloc_nc(N * sizeof(complex)); 
 	
 	s->magnitudes = (float*)malloc_nc(N * sizeof(float));
 	
@@ -103,23 +113,54 @@ void display_peaks(float *x, float *y, int peaks_num)
 
 void analyze_audio(float *sound_data, s_signal *signal_str) 
 { 
+	// time_t tref = time(NULL); 
+	long long t0, t1; 
+
+	float_to_complex(sound_data, signal_str->input_signal, signal_str->N);
+		
 	if(signal_str->window == NO_WINDOW)
 	{ 
-		// Calculate DFT and IDFT on non-windowed signal
-		dft(sound_data, signal_str->dft_res, signal_str->N);
+		// Calculate DFT and IDFT  on non-windowed signal
+		t0 = current_time_ms(); 
+		dft(signal_str->input_signal, signal_str->dft_res, signal_str->N);
 		idft(signal_str->dft_res, signal_str->idft_res, signal_str->N);
+		t1 = current_time_ms(); 
+		printf("DFT + IDFT time: %d [ms]\n", t1-t0); 
+
+		log_to_file("input_signal", signal_str->input_signal, signal_str->N, COMPLEX); 
+		log_to_file("dft_res", signal_str->dft_res, signal_str->N, COMPLEX); 
+		log_to_file("idft_res", signal_str->idft_res, signal_str->N, COMPLEX);  
+
+		t0 = current_time_ms(); 
+		fft_recursive(signal_str->input_signal, signal_str->dft_res, signal_str->N);
+		ifft_recursive(signal_str->dft_res, signal_str->idft_res, signal_str->N);
+		ifft_recursive_scale(signal_str->idft_res, signal_str->N); 
+		t1 = current_time_ms(); 
+		printf("DFFT + IDFFT time: %d [ms]\n", t1-t0); 
+		
+		log_to_file("dfft_recursive_res", signal_str->dft_res, signal_str->N, COMPLEX); 
+		log_to_file("idfft_recursive_res", signal_str->idft_res, signal_str->N, COMPLEX);
 	}
 	else 
 	{ 
 		// Apply signal Windowing to avoid spectral leakage 
 		if(signal_str->window == HANN_WINDOW)
-			hann_window(sound_data, signal_str->input_signal, signal_str->N);
-	
+			hann_window_complex(signal_str->input_signal, signal_str->input_signal, signal_str->N); 
+			// hann_window(sound_data, signal_str->input_signal, signal_str->N);
+
 		if(signal_str->window == HAMMING_WINDOW) 
 			perror("Not implemented! \n"); 
 
 		// Calculate DFT on a signal 
+		t0 = current_time_ms(); 
 		dft(signal_str->input_signal, signal_str->dft_res, signal_str->N);
+		t1 = current_time_ms(); 
+		printf("DFT time: %d [ms]\n", t1-t0); 
+
+		t0 = current_time_ms(); 
+		fft_recursive(signal_str->input_signal, signal_str->dft_res, signal_str->N);
+		t1 = current_time_ms(); 
+		printf("FFT time: %d [ms]\n", t1-t0); 		
 	}
 
 	// Calculate magnitudes, phase shifts and power spectrum of a signal 

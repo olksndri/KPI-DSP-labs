@@ -1,5 +1,11 @@
 #include "complex_math.h"
 
+void float_to_complex(float *df, complex *dc, int length) 
+{	
+	for(int i = 0; i < length; i++)  
+		dc[i] = { .real = df[i], .imag = 0} ;
+}
+
 complex complex_sub(complex a, complex b) 
 {
 	complex res = {
