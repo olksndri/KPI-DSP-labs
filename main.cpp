@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <sndfile.h>
 #include <time.h>
-
+#include <sstream> 
+#include <iomanip> 
 
 #include "math/complex_math.h"
 
@@ -96,7 +97,8 @@ void s_signal_deinit(s_signal *s)
 	free_nc(s->frequencies);
 }
 
-void display_peaks(float *x, float *y, int peaks_num) 
+void display_peaks(float *x, float *y, 
+	const std::string plot_label, const std::string label_x, const std::string label_y, int peaks_num) 
 {
 	std::vector<float> x_v(x, x + peaks_num);
 	std::vector<float> y_v(y, y + peaks_num);
@@ -108,12 +110,17 @@ void display_peaks(float *x, float *y, int peaks_num)
 
 	// draw circles on peaks 
 	plt::plot(x_v, y_v, "ro"); // "ro" = red circles 
+
+	plt::title(plot_label);
+	plt::xlabel(label_x); 
+	plt::ylabel(label_y);
+
     plt::show();
+    // plt::close();
 }
 
-void analyze_audio(float *sound_data, s_signal *signal_str) 
+void analyze_audio_0(float *sound_data, s_signal *signal_str) 
 { 
-	// time_t tref = time(NULL); 
 	long long t0, t1; 
 
 	float_to_complex(sound_data, signal_str->input_signal, signal_str->N);
@@ -146,9 +153,7 @@ void analyze_audio(float *sound_data, s_signal *signal_str)
 		// Apply signal Windowing to avoid spectral leakage 
 		if(signal_str->window == HANN_WINDOW)
 			hann_window_complex(signal_str->input_signal, signal_str->input_signal, signal_str->N); 
-			// hann_window(sound_data, signal_str->input_signal, signal_str->N);
-
-		if(signal_str->window == HAMMING_WINDOW) 
+		else 
 			perror("Not implemented! \n"); 
 
 		// Calculate DFT on a signal 
@@ -183,8 +188,76 @@ void analyze_audio(float *sound_data, s_signal *signal_str)
 	// Calculate amplitude of each bin 
 	calc_bin_amplitudes(signal_str->magnitudes, signal_str->amplitudes, signal_str->N); 
 	
-	int display_points = 128; 
-	display_peaks(signal_str->frequencies, signal_str->amplitudes, display_points); 
+	int display_points = signal_str->N; 
+	std::string plot_title = "Plot title" ;
+	display_peaks(signal_str->frequencies, signal_str->amplitudes, plot_title, "Frequency", "Amplitude", display_points); 
+}
+
+
+// LAB 1 
+// Розробка програмного забезпечення для швидкого
+// перетворення Фур’є голосового сигналу.
+
+// Завдання: розробити програмне забезпечення для
+// зчитування аудіоданних із звукового 
+// файлу, їх фрагментації та швидкого перетворення Фур’є кожного із
+// фрагментів.
+void analyze_audio_1(float *sound_data, s_signal *signal_str, int use_fft, int frame_num) 
+{ 
+	long long t0, t1; 
+
+	float_to_complex(sound_data, signal_str->input_signal, signal_str->N);
+
+	// Apply signal Windowing to avoid spectral leakage 
+	if(signal_str->window == HANN_WINDOW)
+		hann_window_complex(signal_str->input_signal, signal_str->input_signal, signal_str->N); 
+
+	// Calculate DFT and IDFT  on non-windowed signal
+	t0 = current_time_ms(); 
+	if(use_fft)
+		fft_recursive(signal_str->input_signal, signal_str->dft_res, signal_str->N);
+	else 
+		dft(signal_str->input_signal, signal_str->dft_res, signal_str->N);
+	t1 = current_time_ms(); 
+	
+	printf("Fourier transform time: %d [ms]\n", t1-t0); 
+
+	// Calculate magnitudes of a signal 
+	calc_magnitudes(signal_str->dft_res, signal_str->magnitudes, signal_str->N); 
+
+	float Fnyquist = (float)signal_str->Fs / 2; 			// Nyquist frequency [Hz] 
+	float delta_F = (float)signal_str->Fs / signal_str->N; 	// Frequency resolution - step between spectral bins, [Hz] 
+	float T = (float)signal_str->N / signal_str->Fs; 		// Time window (time duration of analyzed signal interval), [s] 
+	float T_ms = T * 1000 ; // Time window in [ms]
+
+	printf("Nyquist frequency: %.2f [Hz]\n", Fnyquist); 
+	printf("Frequency resolution: %.2f [Hz]\n", delta_F); 
+	printf("Analysis time window: %.2f [ms]\n", T_ms); 
+
+	// Calculate frequency and amplitude of each bin 
+	calc_bin_frequencies(signal_str->frequencies, signal_str->Fs, signal_str->N); 
+	calc_bin_amplitudes(signal_str->magnitudes, signal_str->amplitudes, signal_str->N); 
+	
+
+	std::stringstream ss;
+
+	float time_window_beg = frame_num * T_ms; 
+	float time_window_end = time_window_beg + T_ms; 
+	std::string time_mes_unit = "[ms]"; 
+
+	if(time_window_beg >= 1000)
+	{ 
+		time_window_beg /= 1000; 
+		time_window_end /= 1000; 
+		time_mes_unit = "[s]"; 
+	}
+	ss << std::fixed << std::setprecision(2);
+	ss << "Analyzed time window: " << time_window_beg << "..." << time_window_end << " " << time_mes_unit;
+
+	std::string plot_title = ss.str();
+
+	int display_points = signal_str->N; 
+	display_peaks(signal_str->frequencies, signal_str->amplitudes, plot_title, "Frequency", "Amplitude", display_points); 
 }
 
 void log_sf_info(SF_INFO *sf_info)
@@ -217,25 +290,30 @@ int main(int argc, char **argv)
 	log_sf_info(&sf_info); 
 
 	int16_t *sound_data = (int16_t*)malloc_nc(sf_info.frames*sf_info.channels * sizeof(int16_t)); 
-	int16_t *sound_data_ch0 = (int16_t*)malloc_nc(sf_info.frames*sf_info.channels/2 * sizeof(int16_t)); 
-	int16_t *sound_data_ch1 = (int16_t*)malloc_nc(sf_info.frames/2 * sizeof(int16_t)); 
-	float *sound_data_ch0_fl = (float*)malloc_nc(sf_info.frames*sf_info.channels/2 * sizeof(float)); 
+	// int16_t *sound_data_ch0 = (int16_t*)malloc_nc(sf_info.frames*sf_info.channels/2 * sizeof(int16_t)); 
+	int16_t *sound_data_ch0 = (int16_t*)malloc_nc(sf_info.frames * sizeof(int16_t)); 
+	// int16_t *sound_data_ch1 = (int16_t*)malloc_nc(sf_info.frames * sizeof(int16_t)); 
+	float *sound_data_ch0_fl = (float*)malloc_nc(sf_info.frames * sizeof(float)); 
 
 	sf_read_short(f_sound, (int16_t*)sound_data, sf_info.frames*sf_info.channels);
 
-	for(int i = 0, k = 0; i < sf_info.frames-2; k++, i += 2)
+	for(int i = 0, k = 0; i < sf_info.frames; k++, i += sf_info.channels)
 		sound_data_ch0[k] = sound_data[i];
 
-	for(int i = 0; i < sf_info.frames/2; i++)
+	for(int i = 0; i < sf_info.frames/sf_info.channels; i++)
 		sound_data_ch0_fl[i] = (float)sound_data_ch0[i] / INT16_MAX; 
 
 
 	int sample_rate = sf_info.samplerate; 
 	int N = 0; 
 	int win_flag = 0; 
+	int use_fft = 0; 
 
 	std::cout << "Enter number of DFT points: \t"; 
 	std::cin >> N; 
+	std::cout << "\n"; 
+	std::cout << "Should we use FFT? Print 1 or 0: \t"; 
+	std::cin >> use_fft; 
 	std::cout << "\n"; 
 	std::cout << "Should we use hann window? Print 1 or 0: \t"; 
 	std::cin >> win_flag; 
@@ -246,10 +324,20 @@ int main(int argc, char **argv)
 
 	// s_signal_init(&signal_str, N, sample_rate, HANN_WINDOW); 
 	s_signal_init(&signal_str, N, sample_rate, (win_flag) ? HANN_WINDOW : NO_WINDOW); 
-	analyze_audio(sound_data_ch0_fl, &signal_str); 
+	int frames_to_process = sf_info.frames / N; 
+	for(int i = 0; i < frames_to_process; i++)
+	{ 
+		// analyze_audio_0(sound_data_ch0_fl, &signal_str); 
+		analyze_audio_1(&sound_data_ch0_fl[N*i], &signal_str, use_fft, i);  
+	}
+
 	s_signal_deinit(&signal_str); 
 
+	free_nc(sound_data_ch0_fl); 
+	free_nc(sound_data_ch0); 
 	free_nc(sound_data); 
+
+	sf_close(f_sound);
 
 	return 0;  
 }
