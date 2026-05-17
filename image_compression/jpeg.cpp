@@ -586,18 +586,14 @@ void jpeg_encode(RLE_IMAGE_1CH_EOB &Y_rle, RLE_IMAGE_1CH_EOB &Cb_rle, RLE_IMAGE_
 	// The image is converted from RGB to YCbCr
 	RGB_to_YCbCr(YCbCr.data(), RGB, h, w);
 
-
 	// Split YCbCr image into three separate images
 	std::vector<uint8_t> Y(h * w);
 	std::vector<uint8_t> Cb(h * w);
 	std::vector<uint8_t> Cr(h * w);
 	split_YCbCr(Y.data(), Cb.data(), Cr.data(), YCbCr.data(), h, w);
 
-
 	// Chroma channels could be downsampled, resulting into 2 times lesser height and width
-	// int h_ds = h / 2;
-	// int w_ds = w / 2;
-	int h_ds = (h + 1) / 2; // для 513 це дасть 257
+	int h_ds = (h + 1) / 2;
 	int w_ds = (w + 1) / 2;
 	std::vector<uint8_t> Cb_ds(h_ds * w_ds);
 	std::vector<uint8_t> Cr_ds(h_ds * w_ds);
@@ -682,42 +678,20 @@ void jpeg_encode(RLE_IMAGE_1CH_EOB &Y_rle, RLE_IMAGE_1CH_EOB &Cb_rle, RLE_IMAGE_
 	rle_compress_eob(Y_rle, Y_zg.data(), block_h, block_w, mulof8_h, mulof8_w);
 	rle_compress_eob(Cb_rle, Cb_zg.data(), block_h, block_w, mulof8_hds, mulof8_wds);
 	rle_compress_eob(Cr_rle, Cr_zg.data(), block_h, block_w, mulof8_hds, mulof8_wds);
-
-	// RLE_encode;
-
-	// print_img_numbers("Y.txt", Y_zg.data(), mulof8_h, mulof8_w);
-	// print_img_numbers("Cb.txt", Cb_zg.data(), mulof8_hds, mulof8_wds);
-	// print_img_numbers("Cr.txt", Cr_zg.data(), mulof8_hds, mulof8_wds);
-
-	// int8_to_float(Y_pad_fl.data(), Y_pad_int8.data(), Y_pad_int8.size());
-	// int8_to_float(Cb_pad_fl.data(), Cb_pad_int8.data(), Cb_pad_int8.size());
-	// int8_to_float(Cr_pad_fl.data(), Cr_pad_int8.data(), Cr_pad_int8.size());
 }
 
 void jpeg_decode(uint8_t *RGB, RLE_IMAGE_1CH_EOB &Y_rle, RLE_IMAGE_1CH_EOB &Cb_rle, RLE_IMAGE_1CH_EOB &Cr_rle,
 	PADDING &pad_luminance, PADDING &pad_chroma, int h, int w, int use_chroma_downsampling)
 {
-
 	// Start restoring image by concatenating blocks back to image channels
-	// int h_ds = h / 2;
-	// int w_ds = w / 2;
-	int h_ds = (h + 1) / 2; // для 513 це дасть 257
+	int h_ds = (h + 1) / 2;
 	int w_ds = (w + 1) / 2;
 
 	if(!use_chroma_downsampling)
 	{
 		h_ds = h;
 		w_ds = w;
-		// downsample_chroma_4_2_0(Cb_ds.data(), Cb.data(), h, w, h_ds, w_ds);
-		// downsample_chroma_4_2_0(Cr_ds.data(), Cr.data(), h, w, h_ds, w_ds);
 	}
-	// else
-	// {
-	// 	Cb_ds.resize(h_ds * w_ds);
-	// 	Cr_ds.resize(h_ds * w_ds);
-	// 	std::copy(Cb.begin(), Cb.end(), Cb_ds.begin());
-	// 	std::copy(Cr.begin(), Cr.end(), Cr_ds.begin());
-	// }
 
 	// Pad images to have a multiple of 8 size
 	int mulof8_h = (h + 7) & -8;
@@ -758,25 +732,18 @@ void jpeg_decode(uint8_t *RGB, RLE_IMAGE_1CH_EOB &Y_rle, RLE_IMAGE_1CH_EOB &Cb_r
 	int8_to_uint8(Cb_padded.data(), Cb_pad_int8.data(), Cb_padded.size());
 	int8_to_uint8(Cr_padded.data(), Cr_pad_int8.data(), Cr_padded.size());
 
-
 	// Split YCbCr image into three separate images
 	std::vector<uint8_t> Y(h * w);
 	std::vector<uint8_t> Cb(h * w);
 	std::vector<uint8_t> Cr(h * w);
-	// split_YCbCr(Y.data(), Cb.data(), Cr.data(), YCbCr.data(), h, w);
 
 	// Chroma channels could be downsampled, resulting into 2 times lesser height and width
-	// int h_ds = h / 2;
-	// int w_ds = w / 2;
 	std::vector<uint8_t> Cb_ds(h_ds * w_ds);
 	std::vector<uint8_t> Cr_ds(h_ds * w_ds);
-	// downsample_chroma_4_2_0(Cb_ds.data(), Cb.data(), h, w, h_ds, w_ds);
-	// downsample_chroma_4_2_0(Cr_ds.data(), Cr.data(), h, w, h_ds, w_ds);
 
 	unpadding(Y.data(), Y_padded.data(), h, w, pad_luminance);
 	unpadding(Cb_ds.data(), Cb_padded.data(), h_ds, w_ds, pad_chroma);
 	unpadding(Cr_ds.data(), Cr_padded.data(), h_ds, w_ds, pad_chroma);
-
 
 	if(use_chroma_downsampling)
 	{
@@ -795,5 +762,3 @@ void jpeg_decode(uint8_t *RGB, RLE_IMAGE_1CH_EOB &Y_rle, RLE_IMAGE_1CH_EOB &Cb_r
 
 	YCbCr_to_RGB(RGB, YCbCr.data(), h, w);
 }
-//
-//
