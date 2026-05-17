@@ -15,6 +15,9 @@ This project branch implements software for calculation and visualization the me
 ## KPI-DSP-lab 3
 This project branch implements simple voice activity detector (VAD) based on calculated MFCC.
 
+## KPI-DSP-lab 4
+This project branch implements JPEG based image compression algorithm. 
+
 
 ## System Requirements
 
@@ -50,9 +53,17 @@ To build the project, run:
 ./scripts/build.sh
 ```
 
-### Execution
+### Lab 1-3 Execution
 To analyze an audio file, provide the path to a .wav file as an argument:
 
 ```Bash
 ./scripts/run.sh path/to/audio.wav
 ```
+
+### Lab 4 Execution
+To compress an image, provide the path to a .tif file as an argument:
+
+```Bash
+./scripts/run.sh path/to/image.tif
+```
+
