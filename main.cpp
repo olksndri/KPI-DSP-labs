@@ -1,3 +1,4 @@
+#include <SDL2/SDL_pixels.h>
 #include <cstdint>
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +9,11 @@
 #include <iostream>
 #include <thread>
 #include <iomanip>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_main.h>
+#include "tiffio.h"
+#include "image_compression/rle.h"
+#include "image_compression/jpeg.h"
 
 #include "math/complex_math.h"
 
@@ -31,7 +37,7 @@ namespace plt = matplotlibcpp;
 int use_logs = 0;
 int use_time_profile = 0;
 
-int lab = 3;
+int lab = 4;
 
 
 #include "raylib.h"
@@ -44,6 +50,39 @@ int lab = 3;
 
 float rawHistory[HISTORY_SIZE] = { 0 };
 float procHistory[HISTORY_SIZE] = { 0 };
+
+
+void tif_get_sizes(TIFF* f_tif, uint32_t &img_w, uint32_t &img_h, uint32_t &bitsize)
+{
+	TIFFGetMode(f_tif);
+    TIFFGetField(f_tif, TIFFTAG_IMAGEWIDTH, &img_w);
+    TIFFGetField(f_tif, TIFFTAG_IMAGELENGTH, &img_h);
+    TIFFGetField(f_tif, TIFFTAG_BITSPERSAMPLE, &bitsize);
+    printf("w %d\n", img_w);
+	printf("h %d\n", img_h);
+	printf("bitsize %d\n", bitsize);
+}
+
+void tif_read(TIFF* f_tif, uint32_t *image, uint32_t img_w, uint32_t img_h, uint32_t bitsize)
+{
+	if (f_tif == NULL)
+	{
+		printf("open image error\n");
+		exit(0);
+	}
+	else
+	{
+	    if (image != NULL) {
+	        // Read the image into the buffer
+	        if (TIFFReadRGBAImageOriented(f_tif, img_w, img_h, image, 0)) {
+	        } else {
+	            // Handle error
+				printf("read image error\n");
+				exit(0);
+	        }
+	    }
+	}
+}
 
 typedef struct s_signal
 {
@@ -677,14 +716,163 @@ int main(int argc, char **argv)
 
 		free_nc(scratch);
 	}
+	else if (lab == 4)
+	{
+		TIFF* f_tif = TIFFOpen(argv[1], "r");
+
+		uint32_t bitsize;
+		uint32_t img_w, img_h;
+		tif_get_sizes(f_tif, img_w, img_h, bitsize);
+
+		uint32_t *image = (uint32_t*) _TIFFmalloc(img_h * img_w * sizeof(uint32_t));
+		tif_read(f_tif, image, img_w, img_h, bitsize);
+
+		const int y_margin = 100;
+		const int x_margin = 25;
+
+		const int window_w = (img_w * 2) + x_margin * 4 + x_margin;
+		const int window_h = (img_h) + y_margin * 2;
+
+		SDL_Window* window = NULL;
+	    SDL_Renderer* renderer = NULL;
+		SDL_Texture* texture = NULL;
+
+	    // Initialize SDL
+	    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+	        fprintf(stderr, "SDL could not be initialized! SDL_Error: %s\n", SDL_GetError());
+	        return 1;
+	    }
+
+	    // Create window and renderer
+	    if (SDL_CreateWindowAndRenderer(window_w, window_h, SDL_WINDOW_SHOWN, &window, &renderer) < 0) {
+	        fprintf(stderr, "Window and renderer could not be created! SDL_Error: %s\n", SDL_GetError());
+	        return 1;
+	    }
+
+		texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING, window_w, window_h);
+
+		uint32_t window_buff[window_w * window_h];
+
+		// SDL_Color black = (SDL_Color) {.r = 0, .g = 0, .b = 0, .a = 255};
+		// SDL_Color *p_win = (SDL_Color *)window_buff;
+		// for(int i = 0; i < window_h * window_w; i++ )
+		// 	p_win[i] = black;
+
+		for(int y = 0; y < img_h; y++)
+		{
+			for(int x = 0; x < img_w; x++)
+			{
+				int inp_idx = (y * img_w) + x;
+				int out_idx = ((y + y_margin) * window_w) + x + x_margin;
+				window_buff[out_idx] = image[inp_idx];
+			}
+		}
+
+		int orig_img_size = img_h * img_w * 4;
+		// RLE_IMAGE rle_image_st;
+		uint32_t* decompressed_image = (uint32_t* )malloc_nc(img_h * img_w * sizeof(uint32_t));
+		uint8_t* RGB_in = (uint8_t* )malloc_nc(img_h * img_w * 3 * sizeof(uint8_t));
+		uint8_t* RGB_out = (uint8_t* )malloc_nc(img_h * img_w * 3 * sizeof(uint8_t));
+		// rle_compress(image, rle_image_st, img_w, img_h);
+		// rle_decompress(decompressed_image, rle_image_st);
+
+		for(int i = 0; i < img_h * img_w; i++)
+		{
+			uint32_t v = image[i];
+			uint8_t r = v >> 16;
+			uint8_t g = v >> 8;
+			uint8_t b = v >> 0;
+			RGB_in[i*3+0] = r;
+			RGB_in[i*3+1] = g;
+			RGB_in[i*3+2] = b;
+		}
+
+		PADDING pad_luminance;
+		PADDING pad_chroma;
+
+		RLE_IMAGE_1CH_EOB Y_rle;
+		RLE_IMAGE_1CH_EOB Cb_rle;
+		RLE_IMAGE_1CH_EOB Cr_rle;
+		int use_chroma_downsampling = 1;
+		jpeg_encode(Y_rle, Cb_rle, Cr_rle, pad_luminance, pad_chroma, RGB_in, img_h, img_w, use_chroma_downsampling);
+		jpeg_decode(RGB_out, Y_rle, Cb_rle, Cr_rle, pad_luminance, pad_chroma, img_h, img_w, use_chroma_downsampling);
+
+		for(int i = 0; i < img_h * img_w; i++)
+		{
+			uint8_t r = RGB_out[i*3+0];
+			uint8_t g = RGB_out[i*3+1];
+			uint8_t b = RGB_out[i*3+2];
+			uint32_t rgba = (255 << 24) | (r << 16) | (g << 8) | (b << 0);
+			decompressed_image[i]  = rgba ;
+		}
+
+		int compressed_img_data_size_bytes
+			=	(Y_rle.data.size() * sizeof(int16_t)) +
+				(Cb_rle.data.size() * sizeof(int16_t)) +
+				(Cr_rle.data.size() * sizeof(int16_t));
+		int compressed_img_metadata_size_bytes
+			= 	(Y_rle.EOB.size() + sizeof(uint8_t)) +
+				(Cb_rle.EOB.size() + sizeof(uint8_t)) +
+				(Cr_rle.EOB.size() + sizeof(uint8_t)) +
+				sizeof(pad_luminance) + sizeof(pad_chroma) +
+				sizeof(img_h) + sizeof(img_w);
+
+		int compressed_img_size = compressed_img_data_size_bytes + compressed_img_metadata_size_bytes;
+
+		printf("original image size: %d bytes\n", orig_img_size);
+		printf("compessed image size: %d bytes\n", compressed_img_size);
+
+		for(int y = 0; y < img_h; y++)
+		{
+			for(int x = 0; x < img_w; x++)
+			{
+				int inp_idx = (y * img_w) + x;
+				int out_idx = ((y + y_margin) * window_w) + x + 2 * x_margin + img_w;
+				window_buff[out_idx] = decompressed_image[inp_idx];
+			}
+		}
+
+	    // Main loop flag
+	    int quit = 0;
+	    // Event handler
+	    SDL_Event e;
+
+	    // Main loop
+	    while (!quit) {
+	        // Handle events on queue
+	        while (SDL_PollEvent(&e) != 0) {
+	            // User requests quit
+	            if (e.type == SDL_QUIT) {
+	                quit = 1;
+	            }
+	        }
+
+	        // Clear screen with a color (e.g., black)
+			// RGBA format
+			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+	        SDL_RenderClear(renderer);
+			// memcpy(renderer, f_tif, sizeof(uint8_t) * 512 ) ;
+			SDL_UpdateTexture(texture, NULL, window_buff, window_w * sizeof(uint8_t) * 4);
+   			SDL_RenderCopy(renderer, texture, NULL, NULL); // Copy the texture to the renderer
+
+      		// Update the screen
+	        SDL_RenderPresent(renderer);
+	    }
+
+	    // Clean up
+	    SDL_DestroyRenderer(renderer);
+	    SDL_DestroyWindow(window);
+	    SDL_Quit();
+
+		_TIFFfree(image);
+		TIFFClose(f_tif);
+	}
 	else
 	{
 	    std::cout   << "Error, there is no lab " << lab << "implementation."
 					<< "Exiting program\n\n";
 		exit(-1);
 	}
-
-
 
 	return 0;
 }
