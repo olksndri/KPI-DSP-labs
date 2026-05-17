@@ -1,5 +1,6 @@
 #include <SDL2/SDL_pixels.h>
 #include <cstdint>
+#include <filesystem>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sndfile.h>
@@ -37,7 +38,7 @@ namespace plt = matplotlibcpp;
 int use_logs = 0;
 int use_time_profile = 0;
 
-int lab = 4;
+int lab = 5;
 
 
 #include "raylib.h"
@@ -50,6 +51,90 @@ int lab = 4;
 
 float rawHistory[HISTORY_SIZE] = { 0 };
 float procHistory[HISTORY_SIZE] = { 0 };
+
+
+
+#include <vector>
+#include <cmath>
+
+// Structure for storing the result
+struct HaarResult {
+    std::vector<double> approx;
+    std::vector<double> detail;
+};
+
+// Haar DWT computing funciton
+HaarResult compute_haar_dwt(const std::vector<double>& input) {
+    HaarResult result;
+
+    int N = input.size();
+    int Asize = N / 2;
+    int Dsize = N / 2;
+
+    assert((N % 2 == 0) && "Error! compute_haar_dwt function expects input.size() to be multiple of 2");
+
+    result.approx.resize(Asize);
+    result.detail.resize(Dsize);
+
+   	double rsqrt_2 = 1 / sqrt(2);
+
+    for(int in_i = 0, out_i = 0; in_i < N; in_i += 2, out_i++)
+    {
+   		double x0 = input[in_i];
+    	double x1 = input[in_i+1];
+
+    	double Ai = (x0 + x1) * rsqrt_2;
+     	double Di = (x0 - x1) * rsqrt_2;
+
+     	result.approx[out_i] = Ai;
+      	result.detail[out_i] = Di;
+    }
+
+    return result;
+}
+
+// Utility for generating a test signal (sine wave + noise)
+std::vector<double> generate_test_signal(size_t size) {
+    std::vector<double> signal(size);
+    for (size_t i = 0; i < size; ++i) {
+        signal[i] = std::sin(2.0 * M_PI * i / 64.0) + ((rand() % 100) / 500.0);
+    }
+    return signal;
+}
+
+// Helper function for plotting a graph
+void DrawGraph(const std::vector<double>& signal, int x, int y, int width, int height, Color color, const char* title) {
+    if (signal.empty()) return;
+
+    // Frame and title
+    DrawRectangleLines(x, y, width, height, LIGHTGRAY);
+    DrawText(title, x + 10, y + 10, 20, DARKGRAY);
+
+    // Finding the minimum and maximum values for auto-scaling the graph
+    double min_val = signal[0];
+    double max_val = signal[0];
+    for (double val : signal) {
+        if (val < min_val) min_val = val;
+        if (val > max_val) max_val = val;
+    }
+
+    double range = max_val - min_val;
+    if (range == 0.0) range = 1.0; // Division by zero protection
+
+    float pad = 20.0f; // Відступи графіка від країв рамки
+    float draw_h = height - 2 * pad;
+
+    // Margins of the graphic from the edges of the frame
+    for (size_t i = 0; i < signal.size() - 1; ++i) {
+        float x1 = x + (float)i / (signal.size() - 1) * width;
+        float y1 = y + height - pad - ((signal[i] - min_val) / range) * draw_h;
+        float x2 = x + (float)(i + 1) / (signal.size() - 1) * width;
+        float y2 = y + height - pad - ((signal[i + 1] - min_val) / range) * draw_h;
+
+        DrawLineEx({x1, y1}, {x2, y2}, 2.0f, color);
+    }
+}
+
 
 
 void tif_get_sizes(TIFF* f_tif, uint32_t &img_w, uint32_t &img_h, uint32_t &bitsize)
@@ -866,6 +951,48 @@ int main(int argc, char **argv)
 
 		_TIFFfree(image);
 		TIFFClose(f_tif);
+	}
+	else if(lab == 5) // RGR
+	{
+		// Retrieving data
+		size_t data_size = 512;
+		std::vector<double> input_signal = generate_test_signal(data_size);
+
+		// Performing a wavelet transform
+		HaarResult result = compute_haar_dwt(input_signal);
+
+		// Rendering using Raylib
+		const int screenWidth = 1000;
+		const int screenHeight = 800;
+		InitWindow(screenWidth, screenHeight, "Haar Wavelet Analysis");
+		SetTargetFPS(60);
+
+		while (!WindowShouldClose()) {
+			// Saving the result as an image
+		    if (IsKeyPressed(KEY_S)) {
+		        TakeScreenshot("haar_visualization.png");
+		        std::cout << "Картинку збережено як haar_visualization.png\n";
+		    }
+
+		    BeginDrawing();
+		    ClearBackground(RAYWHITE);
+
+		    int graphWidth = screenWidth - 40;
+		    int graphHeight = (screenHeight - 80) / 3;
+
+		    // Display three panels with graphs
+		    DrawGraph(input_signal, 20, 20, graphWidth, graphHeight, BLUE, "Original Signal");
+		    DrawGraph(result.approx, 20, 30 + graphHeight, graphWidth, graphHeight, GREEN, "Approximation (Low Freq)");
+		    DrawGraph(result.detail, 20, 40 + graphHeight * 2, graphWidth, graphHeight, RED, "Detail (High Freq)");
+
+		    DrawText("Press 'S' to save graph as PNG", 20, screenHeight - 25, 20, GRAY);
+
+		    EndDrawing();
+		}
+
+		CloseWindow();
+		return 0;
+
 	}
 	else
 	{
