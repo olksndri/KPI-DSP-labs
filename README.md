@@ -18,6 +18,9 @@ This project branch implements simple voice activity detector (VAD) based on cal
 ## KPI-DSP-lab 4
 This project branch implements JPEG based image compression algorithm. 
 
+## KPI-DSP-lab 5 (Calculation and graphical work) 
+This project branch implements Haar DWT input samples decomposition and visualisation.  
+
 
 ## System Requirements
 
@@ -66,4 +69,14 @@ To compress an image, provide the path to a .tif file as an argument:
 ```Bash
 ./scripts/run.sh path/to/image.tif
 ```
+
+
+### Lab 5 (CGW) Execution
+As simple, as that 
+
+```Bash
+./scripts/run.sh
+```
+
+
 
